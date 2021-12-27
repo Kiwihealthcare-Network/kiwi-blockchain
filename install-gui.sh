@@ -79,7 +79,7 @@ if [ ! "$CI" ]; then
 	git submodule update --init --recursive
 	echo "Running git submodule update."
 	echo ""
-	git submodule update --init --recursive
+	git submodule update
 	cd chia-blockchain-gui
 
 	if [ "$SUBMODULE_BRANCH" ];
