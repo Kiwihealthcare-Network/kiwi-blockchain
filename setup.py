@@ -44,14 +44,20 @@ dev_dependencies = [
 ]
 
 kwargs = dict(
-    name="chia-blockchain",
-    author="Mariano Sorgente",
-    author_email="mariano@chia.net",
-    description="Chia blockchain full node, farmer, timelord, and wallet.",
-    url="https://chia.net/",
+    name="kiwi-blockchain",
+    author="KIWI NETWORK",
+    author_email="kiwihealthcare888@gmail.com",
+    description="Kiwi blockchain full node, farmer, timelord, and wallet.",
+    url="https://kiwihealthcare.network/",
+    # name="chia-blockchain",
+    # author="Mariano Sorgente",
+    # author_email="mariano@chia.net",start the ssh-agent in the background
+    # description="Chia blockchain full node, farmer, timelord, and wallet.",
+    # url="https://chia.net/",
     license="Apache License",
     python_requires=">=3.7, <4",
-    keywords="chia blockchain node",
+    keywords="kiwi blockchain node",
+    # keywords="chia blockchain node",
     install_requires=dependencies,
     setup_requires=["setuptools_scm"],
     extras_require=dict(
