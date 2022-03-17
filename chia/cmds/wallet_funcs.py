@@ -3,14 +3,15 @@ import sys
 import time
 from datetime import datetime
 from decimal import Decimal
-from typing import Callable, List, Optional, Tuple, Dict
+from typing import Callable, Dict, List, Optional, Tuple
 
 import aiohttp
 
 from chia.cmds.units import units
+from chia.rpc.full_node_rpc_client import FullNodeRpcClient
 from chia.rpc.wallet_rpc_client import WalletRpcClient
 from chia.server.start_wallet import SERVICE_NAME
-from chia.util.bech32m import encode_puzzle_hash
+from chia.util.bech32m import decode_puzzle_hash, encode_puzzle_hash
 from chia.util.byte_types import hexstr_to_bytes
 from chia.util.config import load_config
 from chia.util.default_root import DEFAULT_ROOT_PATH
@@ -27,7 +28,7 @@ def print_transaction(tx: TransactionRecord, verbose: bool, name) -> None:
         to_address = encode_puzzle_hash(tx.to_puzzle_hash, name)
         print(f"Transaction {tx.name}")
         print(f"Status: {'Confirmed' if tx.confirmed else ('In mempool' if tx.is_in_mempool() else 'Pending')}")
-        print(f"Amount: {chia_amount} {name}")
+        print(f"Amount {'sent' if tx.sent else 'received'}: {chia_amount} {name}")
         print(f"To address: {to_address}")
         print("Created at:", datetime.fromtimestamp(tx.created_at_time).strftime("%Y-%m-%d %H:%M:%S"))
         print("")
@@ -99,7 +100,7 @@ async def send(args: dict, wallet_client: WalletRpcClient, fingerprint: int) -> 
         tx = await wallet_client.get_transaction(wallet_id, tx_id)
         if len(tx.sent_to) > 0:
             print(f"Transaction submitted to nodes: {tx.sent_to}")
-            print(f"Do chia wallet get_transaction -f {fingerprint} -tx 0x{tx_id} to get status")
+            print(f"Do kiwi wallet get_transaction -f {fingerprint} -tx 0x{tx_id} to get status")
             return None
 
     print("Transaction not yet submitted to nodes")
@@ -127,7 +128,7 @@ def wallet_coin_unit(typ: WalletType, address_prefix: str) -> Tuple[str, int]:
 
 
 def print_balance(amount: int, scale: int, address_prefix: str) -> str:
-    ret = f"{amount/scale} {address_prefix} "
+    ret = f"{amount / scale} {address_prefix} "
     if scale > 1:
         ret += f"({amount} mojo)"
     return ret
@@ -154,6 +155,89 @@ async def print_balances(args: dict, wallet_client: WalletRpcClient, fingerprint
         print(f"   -Spendable: {print_balance(balances['spendable_balance'], scale, address_prefix)}")
 
 
+async def send_from(args: dict, wallet_client: WalletRpcClient, fingerprint: int) -> None:
+    wallet_id = args["id"]
+    address = decode_puzzle_hash(args["address"])
+    source = decode_puzzle_hash(args["source"])
+    request_amount = Decimal(args["amount"])
+    rpc_port = args["rpc_port"]
+
+    if request_amount <= 0:
+        print(f"The withdraw amount should be larger than 0")
+        return None
+
+    withdraw_amount = uint64(int(request_amount * units["chia"]))
+    coin_records = None
+
+    try:
+        config = load_config(DEFAULT_ROOT_PATH, "config.yaml")
+        self_hostname = config["self_hostname"]
+        if rpc_port is None:
+            rpc_port = config["full_node"]["rpc_port"]
+        client = await FullNodeRpcClient.create(self_hostname, uint16(rpc_port), DEFAULT_ROOT_PATH, config)
+        coin_records = await client.get_coin_records_by_puzzle_hash(source, False)
+    except Exception as e:
+        if isinstance(e, aiohttp.ClientConnectorError):
+            print(f"Connection error. Check if full node is running at {rpc_port}")
+        else:
+            print(f"Exception from 'full node' {e}")
+
+    client.close()
+    await client.await_closed()
+
+    # get all unspend coins and sort
+    coins = [cr.coin for cr in coin_records]
+    sorted_coins = sorted(coins, key=lambda x: x.amount, reverse=True)
+
+    amount = 0
+    spend_coins = list()
+
+    for coin in sorted_coins:
+        amount += coin.amount
+        spend_coins.append(coin)
+
+        if amount >= withdraw_amount:
+            break
+
+    change = amount - withdraw_amount
+
+    # check whether staking address has enough balance
+    if change < 0:
+        print(f"Not enough balance in staking address")
+        return None
+
+    additions = [
+        {
+            "puzzle_hash": address,
+            "amount": withdraw_amount,
+        }
+    ]
+
+    if change > 0:
+        additions.append(
+            {
+                "puzzle_hash": source,
+                "amount": change,
+            }
+        )
+
+    print(f"Additions {additions}")
+
+    res = await wallet_client.send_transaction_multi(wallet_id, additions, spend_coins)
+    tx_id = res.name
+    start = time.time()
+    while time.time() - start < 10:
+        await asyncio.sleep(0.1)
+        tx = await wallet_client.get_transaction(wallet_id, tx_id)
+        if len(tx.sent_to) > 0:
+            print(f"Transaction submitted to nodes: {tx.sent_to}")
+            print(f"Do kiwi wallet get_transaction -f {fingerprint} -tx 0x{tx_id} to get status")
+            return None
+
+    print("Transaction not yet submitted to nodes")
+    print(f"Do 'kiwi wallet get_transaction -f {fingerprint} -tx 0x{tx_id}' to get status")
+
+
 async def get_wallet(wallet_client: WalletRpcClient, fingerprint: int = None) -> Optional[Tuple[WalletRpcClient, int]]:
     if fingerprint is not None:
         fingerprints = [fingerprint]
@@ -169,7 +253,7 @@ async def get_wallet(wallet_client: WalletRpcClient, fingerprint: int = None) ->
     else:
         print("Choose wallet key:")
         for i, fp in enumerate(fingerprints):
-            print(f"{i+1}) {fp}")
+            print(f"{i + 1}) {fp}")
         val = None
         while val is None:
             val = input("Enter a number to pick or q to quit: ")
@@ -227,7 +311,7 @@ async def get_wallet(wallet_client: WalletRpcClient, fingerprint: int = None) ->
 
 
 async def execute_with_wallet(
-    wallet_rpc_port: Optional[int], fingerprint: int, extra_params: Dict, function: Callable
+        wallet_rpc_port: Optional[int], fingerprint: int, extra_params: Dict, function: Callable
 ) -> None:
     try:
         config = load_config(DEFAULT_ROOT_PATH, "config.yaml")
@@ -248,7 +332,7 @@ async def execute_with_wallet(
         if isinstance(e, aiohttp.ClientConnectorError):
             print(
                 f"Connection error. Check if the wallet is running at {wallet_rpc_port}. "
-                "You can run the wallet via:\n\tchia start wallet"
+                "You can run the wallet via:\n\tkiwi start wallet"
             )
         else:
             print(f"Exception from 'wallet' {e}")

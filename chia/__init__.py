@@ -1,4 +1,7 @@
+import nest_asyncio
 from pkg_resources import DistributionNotFound, get_distribution, resource_filename
+
+nest_asyncio.apply()
 
 try:
     # charles 20220314 change version to kiwi-blockchain

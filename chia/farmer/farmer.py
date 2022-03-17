@@ -2,9 +2,9 @@ import asyncio
 import json
 import logging
 import time
+import traceback
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
-import traceback
 
 import aiohttp
 from blspy import AugSchemeMPL, G1Element, G2Element, PrivateKey
@@ -21,15 +21,15 @@ from chia.daemon.keychain_proxy import (
 from chia.pools.pool_config import PoolWalletConfig, load_pool_config
 from chia.protocols import farmer_protocol, harvester_protocol
 from chia.protocols.pool_protocol import (
+    AuthenticationPayload,
     ErrorResponse,
-    get_current_authentication_token,
     GetFarmerResponse,
     PoolErrorCode,
     PostFarmerPayload,
     PostFarmerRequest,
     PutFarmerPayload,
     PutFarmerRequest,
-    AuthenticationPayload,
+    get_current_authentication_token,
 )
 from chia.protocols.protocol_message_types import ProtocolMessageTypes
 from chia.server.outbound_message import NodeType, make_msg
@@ -40,16 +40,16 @@ from chia.types.blockchain_format.proof_of_space import ProofOfSpace
 from chia.types.blockchain_format.sized_bytes import bytes32
 from chia.util.bech32m import decode_puzzle_hash
 from chia.util.byte_types import hexstr_to_bytes
-from chia.util.config import load_config, save_config, config_path_for_filename
+from chia.util.config import config_path_for_filename, load_config, save_config
 from chia.util.hash import std_hash
 from chia.util.ints import uint8, uint16, uint32, uint64
 from chia.util.keychain import Keychain
 from chia.wallet.derive_keys import (
+    find_authentication_sk,
+    find_owner_sk,
     master_sk_to_farmer_sk,
     master_sk_to_pool_sk,
     master_sk_to_wallet_sk,
-    find_authentication_sk,
-    find_owner_sk,
 )
 from chia.wallet.puzzles.singleton_top_layer import SINGLETON_MOD
 
@@ -78,11 +78,11 @@ class HarvesterCacheEntry:
         self.data = data
         self.bump_last_update()
 
-    def needs_update(self):
-        return time.time() - self.last_update > UPDATE_HARVESTER_CACHE_INTERVAL
+    def needs_update(self, update_interval: int):
+        return time.time() - self.last_update > update_interval
 
-    def expired(self):
-        return time.time() - self.last_update > UPDATE_HARVESTER_CACHE_INTERVAL * 10
+    def expired(self, update_interval: int):
+        return time.time() - self.last_update > update_interval * 10
 
 
 class Farmer:
@@ -114,6 +114,9 @@ class Farmer:
         # A dictionary of keys to time added. These keys refer to keys in the above 4 dictionaries. This is used
         # to periodically clear the memory
         self.cache_add_time: Dict[bytes32, uint64] = {}
+
+        # Interval to request plots from connected harvesters
+        self.update_harvester_cache_interval = UPDATE_HARVESTER_CACHE_INTERVAL
 
         self.cache_clear_task: asyncio.Task
         self.update_pool_state_task: asyncio.Task
@@ -591,7 +594,7 @@ class Farmer:
             remove_peers = []
             for peer_id, peer_cache in host_cache.items():
                 # If the peer cache is expired it means the harvester didn't respond for too long
-                if peer_cache.expired():
+                if peer_cache.expired(self.update_harvester_cache_interval):
                     remove_peers.append(peer_id)
             for key in remove_peers:
                 del host_cache[key]
@@ -604,11 +607,11 @@ class Farmer:
         updated = False
         for connection in self.server.get_connections(NodeType.HARVESTER):
             cache_entry = await self.get_cached_harvesters(connection)
-            if cache_entry.needs_update():
+            if cache_entry.needs_update(self.update_harvester_cache_interval):
                 self.log.debug(f"update_cached_harvesters update harvester: {connection.peer_node_id}")
                 cache_entry.bump_last_update()
                 response = await connection.request_plots(
-                    harvester_protocol.RequestPlots(), timeout=UPDATE_HARVESTER_CACHE_INTERVAL
+                    harvester_protocol.RequestPlots(), timeout=self.update_harvester_cache_interval
                 )
                 if response is not None:
                     if isinstance(response, harvester_protocol.RespondPlots):
@@ -626,7 +629,8 @@ class Farmer:
                         )
                 else:
                     self.log.error(
-                        "Harvester did not respond. You might need to update harvester to the latest version"
+                        f"Harvester '{connection.peer_host}/{connection.peer_node_id}' did not respond: "
+                        f"(version mismatch or time out {UPDATE_HARVESTER_CACHE_INTERVAL}s)"
                     )
         return updated
 
@@ -681,6 +685,7 @@ class Farmer:
         time_slept: uint64 = uint64(0)
         refresh_slept = 0
         while not self._shut_down:
+            self.log.info("[debug] clear cache")
             try:
                 if time_slept > self.constants.SUB_SLOT_TIME_TARGET:
                     now = time.time()

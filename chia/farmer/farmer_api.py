@@ -1,6 +1,7 @@
 import json
 import time
-from typing import Callable, Optional, List, Any, Dict
+from decimal import Decimal
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import aiohttp
 from blspy import AugSchemeMPL, G2Element, PrivateKey
@@ -12,10 +13,10 @@ from chia.farmer.farmer import Farmer
 from chia.protocols import farmer_protocol, harvester_protocol
 from chia.protocols.harvester_protocol import PoolDifficulty
 from chia.protocols.pool_protocol import (
-    get_current_authentication_token,
     PoolErrorCode,
-    PostPartialRequest,
     PostPartialPayload,
+    PostPartialRequest,
+    get_current_authentication_token,
 )
 from chia.protocols.protocol_message_types import ProtocolMessageTypes
 from chia.server.outbound_message import NodeType, make_msg
@@ -25,6 +26,16 @@ from chia.types.blockchain_format.pool_target import PoolTarget
 from chia.types.blockchain_format.proof_of_space import ProofOfSpace
 from chia.util.api_decorators import api_request, peer_required
 from chia.util.ints import uint32, uint64
+
+
+def strip_old_entries(pairs: List[Tuple[float, Any]], before: float) -> List[Tuple[float, Any]]:
+    for index, [timestamp, points] in enumerate(pairs):
+        if timestamp >= before:
+            if index == 0:
+                return pairs
+            if index > 0:
+                return pairs[index:]
+    return []
 
 
 class FarmerAPI:
@@ -84,6 +95,7 @@ class FarmerAPI:
                 computed_quality_string,
                 new_proof_of_space.proof.size,
                 sp.difficulty,
+                Decimal(new_proof_of_space.difficulty_coeff),
                 new_proof_of_space.sp_hash,
             )
 
@@ -140,6 +152,7 @@ class FarmerAPI:
                     computed_quality_string,
                     new_proof_of_space.proof.size,
                     pool_state_dict["current_difficulty"],
+                    1.5,  # FIXME handle staking in pool protocol
                     new_proof_of_space.sp_hash,
                 )
                 if required_iters >= calculate_sp_interval_iters(
@@ -258,6 +271,7 @@ class FarmerAPI:
         """
         There are two cases: receiving signatures for sps, or receiving signatures for the block.
         """
+        self.farmer.log.info("[debug] farmer respond_signatures")
         if response.sp_hash not in self.farmer.sps:
             self.farmer.log.warning(f"Do not have challenge hash {response.challenge_hash}")
             return None
@@ -355,6 +369,7 @@ class FarmerAPI:
                     return None
 
         else:
+            self.farmer.log.info("[debug] respond_signatures block signatures")
             # This is a response with block signatures
             for sk in self.farmer.get_private_keys():
                 (
@@ -409,40 +424,62 @@ class FarmerAPI:
     """
 
     @api_request
-    async def new_signage_point(self, new_signage_point: farmer_protocol.NewSignagePoint):
-        pool_difficulties: List[PoolDifficulty] = []
-        for p2_singleton_puzzle_hash, pool_dict in self.farmer.pool_state.items():
-            if pool_dict["pool_config"].pool_url == "":
-                # Self pooling
-                continue
+    @peer_required
+    async def new_signage_point(self, new_signage_point: farmer_protocol.NewSignagePoint, peer: ws.WSChiaConnection):
+        try:
+            pool_difficulties: List[PoolDifficulty] = []
+            for p2_singleton_puzzle_hash, pool_dict in self.farmer.pool_state.items():
+                if pool_dict["pool_config"].pool_url == "":
+                    # Self pooling
+                    continue
 
-            if pool_dict["current_difficulty"] is None:
-                self.farmer.log.warning(
-                    f"No pool specific difficulty has been set for {p2_singleton_puzzle_hash}, "
-                    f"check communication with the pool, skipping this signage point, pool: "
-                    f"{pool_dict['pool_config'].pool_url} "
+                if pool_dict["current_difficulty"] is None:
+                    self.farmer.log.warning(
+                        f"No pool specific difficulty has been set for {p2_singleton_puzzle_hash}, "
+                        f"check communication with the pool, skipping this signage point, pool: "
+                        f"{pool_dict['pool_config'].pool_url} "
+                    )
+                    continue
+                pool_difficulties.append(
+                    PoolDifficulty(
+                        pool_dict["current_difficulty"],
+                        self.farmer.constants.POOL_SUB_SLOT_ITERS,
+                        p2_singleton_puzzle_hash,
+                    )
                 )
-                continue
-            pool_difficulties.append(
-                PoolDifficulty(
-                    pool_dict["current_difficulty"],
-                    self.farmer.constants.POOL_SUB_SLOT_ITERS,
-                    p2_singleton_puzzle_hash,
-                )
+            rsp: Optional[farmer_protocol.FarmerStakings] = await peer.request_stakings(
+                farmer_protocol.RequestStakings(public_keys=self.farmer.get_public_keys(), height=None, blocks=None)
             )
-        message = harvester_protocol.NewSignagePointHarvester(
-            new_signage_point.challenge_hash,
-            new_signage_point.difficulty,
-            new_signage_point.sub_slot_iters,
-            new_signage_point.signage_point_index,
-            new_signage_point.challenge_chain_sp,
-            pool_difficulties,
-        )
+            if rsp is None or not isinstance(rsp, farmer_protocol.FarmerStakings):
+                self.log.warning(f"bad RequestStakings response from peer {rsp}")
+                return
 
-        msg = make_msg(ProtocolMessageTypes.new_signage_point_harvester, message)
-        await self.farmer.server.send_to_all([msg], NodeType.HARVESTER)
-        if new_signage_point.challenge_chain_sp not in self.farmer.sps:
-            self.farmer.sps[new_signage_point.challenge_chain_sp] = []
+            message = harvester_protocol.NewSignagePointHarvester(
+                new_signage_point.challenge_hash,
+                new_signage_point.difficulty,
+                new_signage_point.sub_slot_iters,
+                new_signage_point.signage_point_index,
+                new_signage_point.challenge_chain_sp,
+                pool_difficulties,
+                rsp.stakings,
+            )
+
+            msg = make_msg(ProtocolMessageTypes.new_signage_point_harvester, message)
+            await self.farmer.server.send_to_all([msg], NodeType.HARVESTER)
+            if new_signage_point.challenge_chain_sp not in self.farmer.sps:
+                self.farmer.sps[new_signage_point.challenge_chain_sp] = []
+        finally:
+            # Age out old 24h information for every signage point regardless
+            # of any failures.  Note that this still lets old data remain if
+            # the client isn't receiving signage points.
+            cutoff_24h = time.time() - (24 * 60 * 60)
+            for p2_singleton_puzzle_hash, pool_dict in self.farmer.pool_state.items():
+                for key in ["points_found_24h", "points_acknowledged_24h"]:
+                    if key not in pool_dict:
+                        continue
+
+                    pool_dict[key] = strip_old_entries(pairs=pool_dict[key], before=cutoff_24h)
+
         if new_signage_point in self.farmer.sps[new_signage_point.challenge_chain_sp]:
             self.farmer.log.debug(f"Duplicate signage point {new_signage_point.signage_point_index}")
             return
@@ -487,5 +524,10 @@ class FarmerAPI:
         )
 
     @api_request
-    async def respond_plots(self, _: harvester_protocol.RespondPlots):
-        self.farmer.log.warning("Respond plots came too late")
+    @peer_required
+    async def respond_plots(self, _: harvester_protocol.RespondPlots, peer: ws.WSChiaConnection):
+        self.farmer.log.warning(f"Respond plots came too late from: {peer.get_peer_logging()}")
+
+    @api_request
+    async def respond_stakings(self, response: farmer_protocol.FarmerStakings):
+        self.farmer.log.warning("Respond stakings came too late")

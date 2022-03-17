@@ -5,6 +5,7 @@ from concurrent.futures.thread import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
+from chia.consensus.coinbase import create_puzzlehash_for_pk
 import chia.server.ws_connection as ws  # lgtm [py/import-and-import-from]
 from chia.consensus.constants import ConsensusConstants
 from chia.plotting.manager import PlotManager
@@ -15,8 +16,10 @@ from chia.plotting.util import (
     remove_plot,
     PlotsRefreshParameter,
     PlotRefreshResult,
+    PlotRefreshEvents,
 )
 from chia.util.streamable import dataclass_from_dict
+from chia.util.bech32m import encode_puzzle_hash
 
 log = logging.getLogger(__name__)
 
@@ -31,10 +34,12 @@ class Harvester:
     constants: ConsensusConstants
     _refresh_lock: asyncio.Lock
     event_loop: asyncio.events.AbstractEventLoop
+    config: Dict
 
     def __init__(self, root_path: Path, config: Dict, constants: ConsensusConstants):
         self.log = log
         self.root_path = root_path
+        self.config = config
         # TODO, remove checks below later after some versions / time
         refresh_parameter: PlotsRefreshParameter = PlotsRefreshParameter()
         if "plot_loading_frequency_seconds" in config:
@@ -76,15 +81,14 @@ class Harvester:
         if self.state_changed_callback is not None:
             self.state_changed_callback(change)
 
-    def _plot_refresh_callback(self, update_result: PlotRefreshResult):
+    def _plot_refresh_callback(self, event: PlotRefreshEvents, update_result: PlotRefreshResult):
         self.log.info(
-            f"refresh_batch: loaded_plots {update_result.loaded_plots}, "
-            f"loaded_size {update_result.loaded_size / (1024 ** 4):.2f} TiB, "
-            f"removed_plots {update_result.removed_plots}, processed_plots {update_result.processed_files}, "
-            f"remaining_plots {update_result.remaining_files}, "
+            f"refresh_batch: event {event.name}, loaded {update_result.loaded}, "
+            f"removed {update_result.removed}, processed {update_result.processed}, "
+            f"remaining {update_result.remaining}, "
             f"duration: {update_result.duration:.2f} seconds"
         )
-        if update_result.loaded_plots > 0:
+        if update_result.loaded > 0:
             self.event_loop.call_soon_threadsafe(self._state_changed, "plots")
 
     def on_disconnect(self, connection: ws.WSChiaConnection):
@@ -93,6 +97,7 @@ class Harvester:
 
     def get_plots(self) -> Tuple[List[Dict], List[str], List[str]]:
         self.log.debug(f"get_plots prover items: {self.plot_manager.plot_count()}")
+        address_prefix = self.config["network_overrides"]["config"][self.config["selected_network"]]["address_prefix"]
         response_plots: List[Dict] = []
         with self.plot_manager:
             for path, plot_info in self.plot_manager.plots.items():
@@ -108,6 +113,8 @@ class Harvester:
                         "plot_public_key": plot_info.plot_public_key,
                         "file_size": plot_info.file_size,
                         "time_modified": plot_info.time_modified,
+                        "farmer_public_key": plot_info.farmer_public_key,
+                        "farmer_puzzle_address": encode_puzzle_hash(create_puzzlehash_for_pk(plot_info.farmer_public_key), address_prefix),
                     }
                 )
             self.log.debug(

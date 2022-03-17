@@ -1,4 +1,4 @@
-from chia.util.ints import uint64, uint128
+from chia.util.ints import uint64
 
 from .constants import ConsensusConstants
 
@@ -38,8 +38,8 @@ testnet_kwargs = {
         "6bca32cf7660e8b7a38a320c1955da59458521a8ee4f9711c687964d5e9fdeba"
     ),
     "MAX_VDF_WITNESS_SIZE": 64,
-    # Size of mempool = 50x the size of block
-    "MEMPOOL_BLOCK_BUFFER": 50,
+    # Size of mempool = 50x the size of block # temporary change until #9125 gets in
+    "MEMPOOL_BLOCK_BUFFER": 10,
     # Max coin amount, fits into 64 bits
     "MAX_COIN_AMOUNT": uint64((1 << 64) - 1),
     # Max block cost in clvm cost units
@@ -47,14 +47,18 @@ testnet_kwargs = {
     # The cost per byte of generator program
     "COST_PER_BYTE": 12000,
     "WEIGHT_PROOF_THRESHOLD": 2,
-    "BLOCKS_CACHE_SIZE": 4608 + (128 * 4),
+    "STAKING_ESTIMATE_BLOCK_RANGE": 4608 * 3,
+    "BLOCKS_CACHE_SIZE": 4608 * 3 + (128 * 4),  # should be bigger than STAKING_ESTIMAGE_BLOCK_RANGE
     "WEIGHT_PROOF_RECENT_BLOCKS": 1000,
-    "MAX_BLOCK_COUNT_PER_REQUESTS": 32,  # Allow up to 32 blocks per request
-    "RUST_CONDITION_CHECKER": 730000 + 138000,
+    "MAX_BLOCK_COUNT_PER_REQUESTS": 32,
     "NETWORK_TYPE": 0,
     "MAX_GENERATOR_SIZE": 1000000,
     "MAX_GENERATOR_REF_LIST_SIZE": 512,  # Number of references allowed in the block generator ref list
     "POOL_SUB_SLOT_ITERS": 37600000000,  # iters limit * NUM_SPS
+    # hardfork block of rewarding change.
+    "HF_BLOCK_REWARD": -1,
+    # hardfork block of staking change.
+    "HF_BLOCK_STAKING": -1,
 }
 
 

@@ -1,17 +1,22 @@
+from collections import defaultdict
+from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 import aiohttp
 
 from chia.cmds.units import units
 from chia.consensus.block_record import BlockRecord
+from chia.consensus.coinbase import create_puzzlehash_for_pk
 from chia.rpc.farmer_rpc_client import FarmerRpcClient
 from chia.rpc.full_node_rpc_client import FullNodeRpcClient
 from chia.rpc.wallet_rpc_client import WalletRpcClient
+from chia.types.blockchain_format.sized_bytes import bytes32
+from chia.util.bech32m import encode_puzzle_hash
+from chia.util.byte_types import hexstr_to_bytes
 from chia.util.config import load_config
 from chia.util.default_root import DEFAULT_ROOT_PATH
-from chia.util.ints import uint16
-from chia.util.misc import format_bytes
-from chia.util.misc import format_minutes
+from chia.util.ints import uint16, uint64
+from chia.util.misc import format_bytes, format_minutes
 from chia.util.network import is_localhost
 
 SECONDS_PER_BLOCK = (24 * 3600) / 4608
@@ -54,6 +59,25 @@ async def get_blockchain_state(rpc_port: Optional[int]) -> Optional[Dict[str, An
     client.close()
     await client.await_closed()
     return blockchain_state
+
+async def get_ph_balance(rpc_port: Optional[int], puzzle_hash: bytes32) -> Optional[uint64]:
+    coins = None
+    try:
+        config = load_config(DEFAULT_ROOT_PATH, "config.yaml")
+        self_hostname = config["self_hostname"]
+        if rpc_port is None:
+            rpc_port = config["full_node"]["rpc_port"]
+        client = await FullNodeRpcClient.create(self_hostname, uint16(rpc_port), DEFAULT_ROOT_PATH, config)
+        coins = await client.get_coin_records_by_puzzle_hash(puzzle_hash, False)
+    except Exception as e:
+        if isinstance(e, aiohttp.ClientConnectorError):
+            print(f"Connection error. Check if full node is running at {rpc_port}")
+        else:
+            print(f"Exception from 'full node' {e}")
+
+    client.close()
+    await client.await_closed()
+    return sum(coin.coin.amount for coin in coins)
 
 
 async def get_average_block_time(rpc_port: Optional[int]) -> float:
@@ -184,6 +208,7 @@ async def summary(
     harvester_rpc_port: Optional[int],
     farmer_rpc_port: Optional[int],
 ) -> None:
+    config = load_config(DEFAULT_ROOT_PATH, "config.yaml")
     all_harvesters = await get_harvesters(farmer_rpc_port)
     blockchain_state = await get_blockchain_state(rpc_port)
     farmer_running = await is_farmer_running(farmer_rpc_port)
@@ -212,7 +237,7 @@ async def summary(
         print("Farming")
 
     if amounts is not None:
-        print(f"Total chia farmed: {amounts['farmed_amount'] / units['chia']}")
+        print(f"Total kiwi farmed: {amounts['farmed_amount'] / units['chia']}")
         print(f"User transaction fees: {amounts['fee_amount'] / units['chia']}")
         print(f"Block rewards: {(amounts['farmer_reward_amount'] + amounts['pool_reward_amount']) / units['chia']}")
         print(f"Last height farmed: {amounts['last_height_farmed']}")
@@ -220,7 +245,9 @@ async def summary(
     class PlotStats:
         total_plot_size = 0
         total_plots = 0
+        staking_addresses = defaultdict(int)
 
+    total_staking_balance = 0
     if all_harvesters is not None:
         harvesters_local: dict = {}
         harvesters_remote: dict = {}
@@ -238,6 +265,9 @@ async def summary(
                 total_plot_size_harvester = sum(map(lambda x: x["file_size"], plots["plots"]))
                 PlotStats.total_plot_size += total_plot_size_harvester
                 PlotStats.total_plots += len(plots["plots"])
+                for plot in plots["plots"]:
+                    ph = create_puzzlehash_for_pk(hexstr_to_bytes(plot["farmer_public_key"]))
+                    PlotStats.staking_addresses[ph] += 1
                 print(f"   {len(plots['plots'])} plots of size: {format_bytes(total_plot_size_harvester)}")
 
         if len(harvesters_local) > 0:
@@ -251,6 +281,17 @@ async def summary(
 
         print("Total size of plots: ", end="")
         print(format_bytes(PlotStats.total_plot_size))
+
+        print("Staking addresses:")
+        address_prefix = config["network_overrides"]["config"][config["selected_network"]]["address_prefix"]
+        for k, v in sorted(PlotStats.staking_addresses.items(), key=(lambda tup: tup[1]), reverse=True):
+            balance = await get_ph_balance(rpc_port, k)
+            balance /= Decimal(10 ** 6)
+
+            total_staking_balance += balance
+            # query balance
+            ph = encode_puzzle_hash(k, address_prefix)
+            print(f"  {ph} (balance: {balance}, plots: {v})")
     else:
         print("Plot count: Unknown")
         print("Total size of plots: Unknown")
@@ -261,9 +302,13 @@ async def summary(
     else:
         print("Estimated network space: Unknown")
 
+    sf = await get_est_staking_factor(PlotStats.total_plot_size, total_staking_balance)
+    print(f"Estimated staking factor: {sf}")
+
     minutes = -1
     if blockchain_state is not None and all_harvesters is not None:
-        proportion = PlotStats.total_plot_size / blockchain_state["space"] if blockchain_state["space"] else -1
+        est_plot_size = PlotStats.total_plot_size / float(sf)
+        proportion = est_plot_size / blockchain_state["space"] if blockchain_state["space"] else -1
         minutes = int((await get_average_block_time(rpc_port) / 60) / proportion) if proportion else -1
 
     if all_harvesters is not None and PlotStats.total_plots == 0:
@@ -273,8 +318,28 @@ async def summary(
 
     if amounts is None:
         if wallet_not_running:
-            print("For details on farmed rewards and fees you should run 'kiwi start wallet' and 'kiwi wallet show'")
+            print(
+                "For details on farmed rewards and fees you should run 'kiwi start wallet' and 'kiwi wallet show'"
+            )
         elif wallet_not_ready:
             print("For details on farmed rewards and fees you should run 'kiwi wallet show'")
     else:
         print("Note: log into your key using 'kiwi wallet show' to see rewards for each key")
+
+
+async def get_est_staking_factor(total_plot_size, total_staking_balance) -> Decimal:
+
+    sf = 0
+    if total_plot_size == 0:
+        return Decimal(1)
+
+    # convert farmer space from byte to T unit
+    #converted_plot_size = total_plot_size / 1000000000000
+	converted_plot_size = total_plot_size / 1000000
+
+    if total_staking_balance >= converted_plot_size:
+        sf = Decimal("0.5") + Decimal(1) / (Decimal(total_staking_balance) / Decimal(converted_plot_size) + Decimal(1))
+    else:
+        sf = Decimal("0.05") + Decimal(1) / (Decimal(total_staking_balance) / Decimal(converted_plot_size) + Decimal("0.05"))
+
+    return round(sf, 2)

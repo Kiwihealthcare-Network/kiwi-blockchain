@@ -5,3 +5,4 @@
 [submodule "chia-blockchain-gui"]
 	path = chia-blockchain-gui
 	url = https://github.com/Kiwihealthcare-Network/kiwi-blockchain-gui.git
+	branch = main

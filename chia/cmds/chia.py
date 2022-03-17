@@ -1,4 +1,6 @@
 from io import TextIOWrapper
+from typing import Optional
+
 import click
 
 from chia import __version__
@@ -8,18 +10,19 @@ from chia.cmds.init import init_cmd
 from chia.cmds.keys import keys_cmd
 from chia.cmds.netspace import netspace_cmd
 from chia.cmds.passphrase import passphrase_cmd
+from chia.cmds.plotnft import plotnft_cmd
 from chia.cmds.plots import plots_cmd
+from chia.cmds.plotters import plotters_cmd
 from chia.cmds.show import show_cmd
 from chia.cmds.start import start_cmd
 from chia.cmds.stop import stop_cmd
 from chia.cmds.wallet import wallet_cmd
-from chia.cmds.plotnft import plotnft_cmd
 from chia.util.default_root import DEFAULT_KEYS_ROOT_PATH, DEFAULT_ROOT_PATH
 from chia.util.keychain import set_keys_root_path, supports_keyring_passphrase
-from chia.util.ssl import check_ssl
-from typing import Optional
+from chia.util.ssl_check import check_ssl
 
 CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
+DIST_NAME = "Diamonds"
 
 
 def monkey_patch_click() -> None:
@@ -39,7 +42,7 @@ def monkey_patch_click() -> None:
 
 
 @click.group(
-    help=f"\n  Manage chia blockchain infrastructure ({__version__})\n",
+    help=f"\n  Manage kiwi blockchain infrastructure ({DIST_NAME} {__version__})\n",
     epilog="Try 'kiwi start node', 'kiwi netspace -d 192', or 'kiwi show -s'",
     context_settings=CONTEXT_SETTINGS,
 )
@@ -47,7 +50,7 @@ def monkey_patch_click() -> None:
 @click.option(
     "--keys-root-path", default=DEFAULT_KEYS_ROOT_PATH, help="Keyring file root", type=click.Path(), show_default=True
 )
-@click.option("--passphrase-file", type=click.File("r"), help="File or descriptor to read the keyring passphase from")
+@click.option("--passphrase-file", type=click.File("r"), help="File or descriptor to read the keyring passphrase from")
 @click.pass_context
 def cli(
     ctx: click.Context,
@@ -66,7 +69,7 @@ def cli(
         set_keys_root_path(Path(keys_root_path))
 
     if passphrase_file is not None:
-        from .passphrase_funcs import cache_passphrase, read_passphrase_from_file
+        from chia.cmds.passphrase_funcs import cache_passphrase, read_passphrase_from_file
 
         try:
             cache_passphrase(read_passphrase_from_file(passphrase_file))
@@ -83,22 +86,23 @@ if not supports_keyring_passphrase():
     remove_passphrase_options_from_cmd(cli)
 
 
-@cli.command("version", short_help="Show chia version")
+@cli.command("version", short_help="Show kiwi version")
 def version_cmd() -> None:
-    print(__version__)
+    print(DIST_NAME, __version__)
 
 
-@cli.command("run_daemon", short_help="Runs chia daemon")
+@cli.command("run_daemon", short_help="Runs kiwi daemon")
 @click.option(
     "--wait-for-unlock",
     help="If the keyring is passphrase-protected, the daemon will wait for an unlock command before accessing keys",
     default=False,
     is_flag=True,
-    hidden=True,  # --wait-for-unlock is only set when launched by chia start <service>
+    hidden=True,  # --wait-for-unlock is only set when launched by kiwi start <service>
 )
 @click.pass_context
 def run_daemon_cmd(ctx: click.Context, wait_for_unlock: bool) -> None:
     import asyncio
+
     from chia.daemon.server import async_run_daemon
     from chia.util.keychain import Keychain
 
@@ -118,6 +122,7 @@ cli.add_command(start_cmd)
 cli.add_command(stop_cmd)
 cli.add_command(netspace_cmd)
 cli.add_command(farm_cmd)
+cli.add_command(plotters_cmd)
 
 if supports_keyring_passphrase():
     cli.add_command(passphrase_cmd)

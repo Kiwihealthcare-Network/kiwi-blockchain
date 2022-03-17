@@ -323,7 +323,7 @@ class TradeManager:
         return get_discrepancies_for_spend_bundle(trade_offer.spend_bundle)
 
     async def get_inner_puzzle_for_puzzle_hash(self, puzzle_hash) -> Program:
-        info = await self.wallet_state_manager.puzzle_store.get_derivation_record_for_puzzle_hash(puzzle_hash.hex())
+        info = await self.wallet_state_manager.puzzle_store.get_derivation_record_for_puzzle_hash(puzzle_hash)
         assert info is not None
         puzzle = self.wallet_state_manager.main_wallet.puzzle_for_pk(bytes(info.pubkey))
         return puzzle
@@ -435,7 +435,7 @@ class TradeManager:
                         return (
                             False,
                             None,
-                            "Unable to generate zero value coin. Confirm that you have chia available",
+                            "Unable to generate zero value coin. Confirm that you have kiwi available",
                         )
                     zero_spend_list.append(zero_spend_bundle)
 

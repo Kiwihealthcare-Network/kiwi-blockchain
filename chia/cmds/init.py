@@ -15,19 +15,20 @@ from chia.util.keychain import supports_keyring_passphrase
     is_flag=True,
     help="Attempt to fix SSL certificate/key file permissions",
 )
+@click.option("--testnet", is_flag=True, help="Configure this chia install to connect to the testnet")
 @click.option("--set-passphrase", "-s", is_flag=True, help="Protect your keyring with a passphrase")
 @click.pass_context
-def init_cmd(ctx: click.Context, create_certs: str, fix_ssl_permissions: bool, **kwargs):
+def init_cmd(ctx: click.Context, create_certs: str, fix_ssl_permissions: bool, testnet: bool, **kwargs):
     """
     Create a new configuration or migrate from previous versions to current
 
     \b
     Follow these steps to create new certificates for a remote harvester:
-    - Make a copy of your Farming Machine CA directory: ~/.chia/[version]/config/ssl/ca
-    - Shut down all chia daemon processes with `chia stop all -d`
+    - Make a copy of your Farming Machine CA directory: ~/.kiwi/[version]/config/ssl/ca
+    - Shut down all kiwi daemon processes with `kiwi stop all -d`
     - Run `kiwi init -c [directory]` on your remote harvester,
       where [directory] is the the copy of your Farming Machine CA directory
-    - Get more details on remote harvester on Chia wiki:
+    - Get more details on remote harvester on Kiwi wiki:
       https://github.com/kiwihealthcare-network/kiwi-blockchain/wiki/Farming-on-many-machines
     """
     from pathlib import Path
@@ -38,7 +39,7 @@ def init_cmd(ctx: click.Context, create_certs: str, fix_ssl_permissions: bool, *
     if set_passphrase:
         initialize_passphrase()
 
-    init(Path(create_certs) if create_certs is not None else None, ctx.obj["root_path"], fix_ssl_permissions)
+    init(Path(create_certs) if create_certs is not None else None, ctx.obj["root_path"], fix_ssl_permissions, testnet)
 
 
 if not supports_keyring_passphrase():

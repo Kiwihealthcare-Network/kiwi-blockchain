@@ -10,6 +10,7 @@ from chia.util.byte_types import hexstr_to_bytes
 from chia.util.config import load_config
 from chia.util.default_root import DEFAULT_ROOT_PATH
 from chia.util.ints import uint16
+from chia.util.bech32m import decode_puzzle_hash
 
 
 @click.group("wallet", short_help="Manage your wallet")
@@ -87,7 +88,7 @@ def get_transactions_cmd(
     sys.stdout.close()
 
 
-@wallet_cmd.command("send", short_help="Send kiwi to another wallet")
+@wallet_cmd.command("send", short_help="Send kik to another wallet")
 @click.option(
     "-wp",
     "--wallet-rpc-port",
@@ -97,17 +98,17 @@ def get_transactions_cmd(
 )
 @click.option("-f", "--fingerprint", help="Set the fingerprint to specify which wallet to use", type=int)
 @click.option("-i", "--id", help="Id of the wallet to use", type=int, default=1, show_default=True, required=True)
-@click.option("-a", "--amount", help="How much kiwi to send, in XCH", type=str, required=True)
+@click.option("-a", "--amount", help="How much kiwi to send, in KIK", type=str, required=True)
 @click.option(
     "-m",
     "--fee",
-    help="Set the fees for the transaction, in XCH",
+    help="Set the fees for the transaction, in KIK",
     type=str,
     default="0",
     show_default=True,
     required=True,
 )
-@click.option("-t", "--address", help="Address to send the XCH", type=str, required=True)
+@click.option("-t", "--address", help="Address to send the KIK", type=str, required=True)
 @click.option(
     "-o", "--override", help="Submits transaction without checking for unusual values", is_flag=True, default=False
 )
@@ -120,6 +121,47 @@ def send_cmd(
     from .wallet_funcs import execute_with_wallet, send
 
     asyncio.run(execute_with_wallet(wallet_rpc_port, fingerprint, extra_params, send))
+
+
+@wallet_cmd.command("send_from", short_help="Transfer all kik away from a specific puzzle hash")
+@click.option(
+    "-p",
+    "--rpc-port",
+    help=(
+        "Set the port where the Full Node is hosting the RPC interface. "
+        "See the rpc_port under full_node in config.yaml"
+    ),
+    type=int,
+    default=None,
+    show_default=True,
+)
+@click.option(
+    "-wp",
+    "--wallet-rpc-port",
+    help="Set the port where the Wallet is hosting the RPC interface. See the rpc_port under wallet in config.yaml",
+    type=int,
+    default=None,
+)
+@click.option("-f", "--fingerprint", help="Set the fingerprint to specify which wallet to use", type=int)
+@click.option("-i", "--id", help="Id of the wallet to use", type=int, default=1, show_default=True, required=True)
+@click.option("-s", "--source", help="Address to send the KIK", type=str, required=True)
+@click.option("-t", "--address", help="Target address to receive the KIK", type=str, required=True)
+@click.option("-a", "--amount", help="How much Silicoin to send, in KIK", type=str, required=True)
+def send_from_cmd(
+    rpc_port: Optional[int],
+    wallet_rpc_port: Optional[int],
+    fingerprint: int,
+    id: int,
+    source: str,
+    address: str,
+    amount: str,
+) -> None:
+    import asyncio
+
+    from .wallet_funcs import execute_with_wallet, send_from
+
+    extra_params = {"id": id, "source": source, "address": address, "amount": amount, "rpc_port": rpc_port}
+    asyncio.run(execute_with_wallet(wallet_rpc_port, fingerprint, extra_params, send_from))
 
 
 @wallet_cmd.command("show", short_help="Show wallet information")
@@ -200,8 +242,10 @@ async def do_recover_pool_nft(contract_hash: str, launcher_hash: str, fingerprin
         print("no expired coins")
         return
     print("found", len(coins), "expired coins, total amount:", sum(coin.amount for coin in coins))
-    wallet_client_f = await get_wallet(wallet_client, fingerprint=fingerprint)
-    tx = await wallet_client_f.recover_pool_nft(launcher_hash, contract_hash, coins)
+    wallet_client_f, f = await get_wallet(wallet_client, fingerprint=fingerprint)
+
+    coins_dict_array = [coin.to_json_dict() for coin in coins]
+    tx = await wallet_client_f.recover_pool_nft(launcher_hash, contract_hash, coins_dict_array)
     await node_client.push_tx(tx)
     print("tx pushed")
 
@@ -215,7 +259,7 @@ async def do_recover_pool_nft(contract_hash: str, launcher_hash: str, fingerprin
 )
 @click.option(
     "--launcher-hash",
-    help="Set the launcher hash, you should get it from chia wallet",
+    help="Set the launcher hash, you should get it from kiwi wallet",
     type=str,
     default=None,
 )
@@ -223,4 +267,7 @@ async def do_recover_pool_nft(contract_hash: str, launcher_hash: str, fingerprin
 def recover_pool_nft(contract_hash: str, launcher_hash: str, fingerprint: int):
     import asyncio
 
-    asyncio.run(do_recover_pool_nft(contract_hash, launcher_hash, fingerprint))
+    # Convert contract_hash to puzzle_hash
+    contract_puzzle_hash = decode_puzzle_hash(contract_hash).hex()
+
+    asyncio.run(do_recover_pool_nft(contract_puzzle_hash, launcher_hash, fingerprint))

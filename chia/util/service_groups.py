@@ -1,4 +1,4 @@
-from typing import KeysView, Generator
+from typing import Generator, KeysView
 
 SERVICES_FOR_GROUP = {
     "all": "kiwi_harvester kiwi_timelord_launcher kiwi_timelord kiwi_farmer kiwi_full_node kiwi_wallet".split(),

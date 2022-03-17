@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from secrets import token_bytes
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from blspy import AugSchemeMPL, G1Element, PrivateKey
 from chiapos import DiskPlotter
@@ -139,18 +139,10 @@ async def resolve_plot_keys(
         farmer_public_key, alt_fingerprint, pool_public_key, pool_contract_address, root_path, log, connect_to_daemon
     ).resolve()
 
-def get_pool_public_key(alt_fingerprint: Optional[int] = None) -> G1Element:
-    sk_ent: Optional[Tuple[PrivateKey, bytes]]
-    keychain: Keychain = Keychain()
-    if alt_fingerprint is not None:
-        sk_ent = keychain.get_private_key_by_fingerprint(alt_fingerprint)
-    else:
-        sk_ent = keychain.get_first_private_key()
-    if sk_ent is None:
-        raise RuntimeError("No keys, please run 'kiwi keys add', 'kiwi keys generate' or provide a public key with -p")
-    return master_sk_to_pool_sk(sk_ent[0]).get_g1()
 
-async def create_plots(args, keys: PlotKeys, root_path, use_datetime=True, test_private_keys: Optional[List] = None):
+async def create_plots(
+    args, keys: PlotKeys, root_path, use_datetime=True, test_private_keys: Optional[List] = None
+) -> Tuple[Dict[bytes32, Path], Dict[bytes32, Path]]:
 
     config_filename = config_path_for_filename(root_path, "config.yaml")
     config = load_config(root_path, config_filename)
@@ -191,7 +183,8 @@ async def create_plots(args, keys: PlotKeys, root_path, use_datetime=True, test_
 
     mkdir(args.final_dir)
 
-    finished_filenames = []
+    created_plots: Dict[bytes32, Path] = {}
+    existing_plots: Dict[bytes32, Path] = {}
     for i in range(num):
         # Generate a random master secret key
         if test_private_keys is not None:
@@ -267,9 +260,10 @@ async def create_plots(args, keys: PlotKeys, root_path, use_datetime=True, test_
                 args.num_threads,
                 args.nobitfield,
             )
-            finished_filenames.append(filename)
+            created_plots[plot_id] = full_path
         else:
             log.info(f"Plot {filename} already exists")
+            existing_plots[plot_id] = full_path
 
     log.info("Summary:")
 
@@ -285,6 +279,8 @@ async def create_plots(args, keys: PlotKeys, root_path, use_datetime=True, test_
         except Exception:
             log.info(f"warning: did not remove secondary temporary folder {args.tmp2_dir}, it may not be empty.")
 
-    log.info(f"Created a total of {len(finished_filenames)} new plots")
-    for filename in finished_filenames:
-        log.info(filename)
+    log.info(f"Created a total of {len(created_plots)} new plots")
+    for created_path in created_plots.values():
+        log.info(created_path.name)
+
+    return created_plots, existing_plots

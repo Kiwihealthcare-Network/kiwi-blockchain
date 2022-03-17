@@ -28,3 +28,40 @@ Please visit our wiki for more information:
 
 [TokenDock](https://tokendock.io/)
 
+## How to staking
+
+1. Query the staking addresses according to your farming plot list:
+
+   ```
+   $ kiwi farm summary
+   ...
+   Staking addresses:
+     kik1x6jjvepyvjv7395nmtywvx9mknshgy78dsmuu38m0e9grxr080nsltjugr (balance: 0, plots: 27)
+   ...
+   ```
+
+2. Deposit coins to the staking address:
+
+   ```
+   $ kiwi wallet send -t kik1x6jjvepyvjv7395nmtywvx9mknshgy78dsmuu38m0e9grxr080nsltjugr -a 1
+   ```
+
+   Wait for the transaction get confirmed, query staking balance again:
+
+   ```
+   $ kiwi farm summary
+   ...
+   Staking addresses:
+     kik1x6jjvepyvjv7395nmtywvx9mknshgy78dsmuu38m0e9grxr080nsltjugr (balance: 1, plots: 27)
+   ...
+   ```
+
+3. Withdraw coins from the staking address:
+
+   ```
+   $ kiwi wallet send_from -s kik1x6jjvepyvjv7395nmtywvx9mknshgy78dsmuu38m0e9grxr080nsltjugr -t $RECEIVER -a 10
+   ```
+
+   Do a transaction to transfer the coins from the staking address to any receive address.
+
+   Make sure to choose the wallet that contains the plot farmer key.
