@@ -146,7 +146,7 @@ def send_cmd(
 @click.option("-i", "--id", help="Id of the wallet to use", type=int, default=1, show_default=True, required=True)
 @click.option("-s", "--source", help="Address to send the KIK", type=str, required=True)
 @click.option("-t", "--address", help="Target address to receive the KIK", type=str, required=True)
-@click.option("-a", "--amount", help="How much Silicoin to send, in KIK", type=str, required=True)
+@click.option("-a", "--amount", help="How much Kiwi to send, in KIK", type=str, required=True)
 def send_from_cmd(
     rpc_port: Optional[int],
     wallet_rpc_port: Optional[int],
