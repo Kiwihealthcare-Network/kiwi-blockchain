@@ -293,7 +293,8 @@ full_node:
       port: 12120
   introducer_peer:
       host: introducer.kiwihealthcare.network
-      port: 20086
+#      port: 20086
+      port: 21234
   wallet_peer:
     host: *self_hostname
     port: 12369
@@ -379,7 +380,8 @@ wallet:
 
   introducer_peer:
     host: introducer.kiwihealthcare.network
-    port: 20086
+#    port: 20086
+    port: 21234
 
   ssl:
     private_crt:  "config/ssl/wallet/private_wallet.crt"
