@@ -251,4 +251,4 @@ async def async_run_service(*args, **kwargs) -> None:
 def run_service(*args, **kwargs) -> None:
     if uvloop is not None:
         uvloop.install()
-    return asyncio.run(async_run_service(*args, **kwargs))
+    return asyncio.run(async_run_service(*args, **kwargs), debug=True)
