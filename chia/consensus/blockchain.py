@@ -998,6 +998,10 @@ class Blockchain(BlockchainInterface):
                 curr = self.try_block_record(curr.prev_hash)
         network_space = await self.get_peak_network_space(block_range, peak)
         staking = await self.get_peak_farmer_staking(farmer_public_key, peak)
+
+        # change 20220331 18:55
+        staking = Decimal(staking) / Decimal(5000)
+
         minimal_staking = Decimal(network_space) / (block_range * 100)
 
         coeff = Decimal(0)
