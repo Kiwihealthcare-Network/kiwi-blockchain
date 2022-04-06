@@ -1000,7 +1000,8 @@ class Blockchain(BlockchainInterface):
         staking = await self.get_peak_farmer_staking(farmer_public_key, peak)
 
         # change 20220331 18:55
-        staking = Decimal(staking) / Decimal(5000)
+        # staking = Decimal(staking) / Decimal(5000) * Decimal(10 ** 6)
+        staking = Decimal(staking) * 200
 
         minimal_staking = Decimal(network_space) / (block_range * 100)
 

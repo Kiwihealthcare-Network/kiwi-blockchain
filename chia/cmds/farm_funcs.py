@@ -338,8 +338,8 @@ async def get_est_staking_factor(total_plot_size, total_staking_balance) -> Deci
     converted_plot_size = total_plot_size / 1000000
 
     if total_staking_balance >= converted_plot_size:
-        sf = Decimal("0.5") + Decimal(1) / ((Decimal(total_staking_balance) / Decimal(5000)) / Decimal(converted_plot_size) + Decimal(1))
+        sf = Decimal("0.5") + Decimal(1) / ((Decimal(total_staking_balance) * 200) / Decimal(converted_plot_size) + Decimal(1))
     else:
-        sf = Decimal("0.05") + Decimal(1) / ((Decimal(total_staking_balance) / Decimal(5000)) / Decimal(converted_plot_size) + Decimal("0.05"))
+        sf = Decimal("0.05") + Decimal(1) / ((Decimal(total_staking_balance) * 200) / Decimal(converted_plot_size) + Decimal("0.05"))
 
     return round(sf, 2)
