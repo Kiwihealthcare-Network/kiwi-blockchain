@@ -12,7 +12,7 @@ network_overrides: &network_overrides
   constants:
     mainnet:
       NETWORK_TYPE: 1
-      GENESIS_CHALLENGE: c5f711de5ef7144edbb3498f80d31171c1773de3a70c8ad3a15cd06a0d29416d
+      GENESIS_CHALLENGE: f4e7326cbcf88f1e9323a6eb4bb3c9c6b3b8202e7225b76fee68363440b3aa05
       DIFFICULTY_STARTING: 7
       EPOCH_BLOCKS: 768
       SUB_SLOT_ITERS_STARTING: 33554432
