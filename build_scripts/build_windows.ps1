@@ -61,7 +61,7 @@ pip install --no-index --find-links=.\win_build\ miniupnpc
 # pip install setproctitle==1.2.2
 
 Write-Output "pip install kiwi-blockchain"
-pip install --no-index --find-links=.\win_build\ chia-blockchain
+pip install --no-index --find-links=.\win_build\ kiwi-blockchain
 
 Write-Output "   ---"
 Write-Output "Use pyinstaller to create chia .exe's"
