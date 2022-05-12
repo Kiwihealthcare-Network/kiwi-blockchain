@@ -36,14 +36,14 @@ Please visit our wiki for more information:
    $ kiwi farm summary
    ...
    Staking addresses:
-     kik1x6jjvepyvjv7395nmtywvx9mknshgy78dsmuu38m0e9grxr080nsltjugr (balance: 0, plots: 27)
+     kik1d09r9nmkvr5t0gu2xgxpj4w6t9zc2gdgae8ewywxs7ty6h5lm6aq23cla2 (balance: 0, plots: 27)
    ...
    ```
 
 2. Deposit coins to the staking address:
 
    ```
-   $ kiwi wallet send -t kik1x6jjvepyvjv7395nmtywvx9mknshgy78dsmuu38m0e9grxr080nsltjugr -a 1
+   $ kiwi wallet send -t kik1d09r9nmkvr5t0gu2xgxpj4w6t9zc2gdgae8ewywxs7ty6h5lm6aq23cla2 -a 1
    ```
 
    Wait for the transaction get confirmed, query staking balance again:
@@ -52,14 +52,14 @@ Please visit our wiki for more information:
    $ kiwi farm summary
    ...
    Staking addresses:
-     kik1x6jjvepyvjv7395nmtywvx9mknshgy78dsmuu38m0e9grxr080nsltjugr (balance: 1, plots: 27)
+     kik1d09r9nmkvr5t0gu2xgxpj4w6t9zc2gdgae8ewywxs7ty6h5lm6aq23cla2 (balance: 1, plots: 27)
    ...
    ```
 
 3. Withdraw coins from the staking address:
 
    ```
-   $ kiwi wallet send_from -s kik1x6jjvepyvjv7395nmtywvx9mknshgy78dsmuu38m0e9grxr080nsltjugr -t $RECEIVER -a 10
+   $ kiwi wallet send_from -s kik1d09r9nmkvr5t0gu2xgxpj4w6t9zc2gdgae8ewywxs7ty6h5lm6aq23cla2 -t $RECEIVER -a 10
    ```
 
    Do a transaction to transfer the coins from the staking address to any receive address.
