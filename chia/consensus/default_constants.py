@@ -30,7 +30,7 @@ testnet_kwargs = {
     # Default used for tests is std_hash(b'')
     "GENESIS_CHALLENGE": bytes.fromhex("6f374f378e53e280d72958122d9227a545b61a436ef20e7b0c09465d489e1de9"),
     # Forks of chia should change this value to provide replay attack protection. This is set to mainnet genesis chall
-    "AGG_SIG_ME_ADDITIONAL_DATA": bytes.fromhex("f464103b4a2da5258eb5a6b1bb726ad1a9a193396f11aa739fd10e0b6c849cf8"),
+    "AGG_SIG_ME_ADDITIONAL_DATA": bytes.fromhex("73cec337e7a3928a5b0581cdef65f8c6b4b93b3cb68fdf97e4369bfcf1ac3983"),
     "GENESIS_PRE_FARM_POOL_PUZZLE_HASH": bytes.fromhex(
         "6bca32cf7660e8b7a38a320c1955da59458521a8ee4f9711c687964d5e9fdeba"
     ),
