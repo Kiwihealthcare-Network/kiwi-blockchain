@@ -4,8 +4,8 @@ from chia.util.ints import uint32, uint64
 _mojo_per_chia = 1000000
 _blocks_per_year = 1681920  # 32 * 6 * 24 * 365
 
-# team + family + dev + mobile lock + + testnet supply
-PREFARM = 10564560000 + 10564560000 + 14086080000 + 35215200000 + 0
+# team + family + dev + mobile lock + + testnet airdrop
+PREFARM = 10564560000 + 10564560000 + 14086080000 + 35215200000 + 5000000000
 
 # TODO fork height to be decided
 # after reward hardfork activated, all the block rewards go to farmer,
