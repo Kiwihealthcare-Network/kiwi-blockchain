@@ -1,0 +1,6 @@
+[submodule "mozilla-ca"]
+	path = mozilla-ca
+	url = https://github.com/Chia-Network/mozilla-ca.git
+[submodule "chia-blockchain-gui"]
+	path = chia-blockchain-gui
+	url = https://github.com/Kiwihealthcare-Network/kiwi-blockchain-gui.git
